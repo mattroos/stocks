@@ -212,7 +212,7 @@ for iter in range(n_iters):
     optimizer.step()
 
     loss_history[iter] = loss.data.cpu().numpy()
-    loss_baseline[iter] = criterion(torch.zeros(batch_out.size()), batch_out).data.cpu().numpy()
+    loss_baseline[iter] = criterion(TT(np.zeros(batch_out.size(),dtype=np.float32)), batch_out).data.cpu().numpy()
 
 
     if (iter+1)%n_iter_per_log==0:
