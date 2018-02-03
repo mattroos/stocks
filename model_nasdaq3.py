@@ -64,6 +64,15 @@ if torch.cuda.is_available():
 
 b_use_cuda = torch.cuda.is_available()
 
+def TT(x):
+    # convert array/tensor to torch tensor and put on GPU if available
+    if type(x)==np.ndarray:
+        x = torch.from_numpy(x).contiguous()
+    if b_use_cuda:
+        x = x.cuda()
+    return x
+
+
 ## Model class
 class fc_layers(nn.Module):
     def __init__(self, n_symbols, n_features, output_sizes, dropout=0):
@@ -188,12 +197,8 @@ for iter in range(n_iters):
     batch_out = batch_out[:,bKeep]
 
     # Convert to Variable and move to GPU if GPU available
-    if b_use_cuda:
-        batch_in = V(torch.from_numpy(batch_in.astype(np.float32)).contiguous().cuda())
-        batch_out = V(torch.from_numpy(batch_out.astype(np.float32)).contiguous().cuda())
-    else:
-        batch_in = V(torch.from_numpy(batch_in.astype(np.float32)).contiguous())
-        batch_out = V(torch.from_numpy(batch_out.astype(np.float32)).contiguous())
+    batch_in = V(TT(batch_in.astype(np.float32)))
+    batch_out = V(TT(batch_out.astype(np.float32)))
 
     # Put data through model and compute loss
     output = net(batch_in)
