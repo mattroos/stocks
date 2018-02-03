@@ -9,6 +9,11 @@
 #       AAAP,12-Jan-2017,29.19,29.5,28.28,29.01,150600
 #
 #
+# WARNING: The raw data files include dates in which the market was closed,
+# and all fields contain the closing value of the day before.
+# TODO: Remove the data for the closed days?
+#
+#
 # Side thoughts on models:
 # 1. Don't identify individual stocks. Just have N stocks as input over M days. This
 #    may help with model generalization.  And the model training can use augmented data
