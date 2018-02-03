@@ -44,13 +44,13 @@ from scipy.stats.mstats import spearmanr
 plt.ion()
 
 ## Set model parameters
-layer_sizes = [20, 20, 1]
-dropout = 0.0
+layer_sizes = [10, 10, 1]
+dropout = 0.1
 batch_size = 1
 n_iters = 2000
-n_days_input = 10
+n_days_input = 5
 n_iter_per_log = 100
-learn_rate = 0.0003
+learn_rate = 0.001
 
 ################################################################
 # Initialize some things, and define functions and classes
@@ -99,13 +99,15 @@ class fc_layers(nn.Module):
 
         output = self.fc2(output)
 
-        '''
-        output_summ = self.LinearSumm1(output/output.size()[2])   # divided by number of stocks
-        output_summ = torch.sum(output_summ, 1, keepdim=True)   # sum over all stocks
+        #'''
+        # output_summ = self.LinearSumm1(output/output.size()[2])   # divided by number of stocks
+        # output_summ = torch.sum(output_summ, 1, keepdim=True)   # sum over all stocks
+        output_summ = self.LinearSumm1(output)   # divided by number of stocks
+        output_summ = torch.mean(output_summ, 1, keepdim=True)   # sum over all stocks
         output_summ = F.relu(output_summ)
-        output_summ = output_summ + self.LinearSumm2(output_summ)
+        output_summ = self.LinearSumm2(output_summ)
         output = output + output_summ
-        '''
+        #'''
 
         output = F.relu(output)
         #output = self.do2(output)
@@ -123,6 +125,14 @@ volume = data_dict['volume']
 prices = data_dict['prices']
 del data_dict
 
+
+# Remove days in which the market was closed (determined as days
+# for which all stocks had volume=0 or volume=nan)
+ixClosed = np.where(np.all((volume==0) | np.isnan(volume), axis=0))[0]
+prices = np.delete(prices, ixClosed, axis=1)
+volume = np.delete(volume, ixClosed, axis=1)
+dates = np.delete(dates, ixClosed)
+dayofweek = np.delete(dayofweek, ixClosed)
 
 # Use price gains relative to previous close, not absolute dollars
 prices[:, 1:, :] = prices[:, 1:, :] / prices[:, 0:-1, 3:4]
@@ -164,9 +174,10 @@ if b_use_cuda:
 optimizer = optim.Adam(net.parameters(), lr=learn_rate)
 
 loss_history = np.zeros(n_iters)
+loss_baseline = np.zeros(n_iters)
+spear = np.zeros(n_iters)
 # loss_train_history = np.asarray([])
 # loss_test_history = np.asarray([])
-loss_baseline = np.zeros(n_iters)
 
 criterion = nn.MSELoss()
 
@@ -213,6 +224,7 @@ for iter in range(n_iters):
 
     loss_history[iter] = loss.data.cpu().numpy()
     loss_baseline[iter] = criterion(TT(np.zeros(batch_out.size(),dtype=np.float32)), batch_out).data.cpu().numpy()
+    spear[iter] = spearmanr(output[0,:,0].data.cpu().numpy(), batch_out[0,:].data.cpu().numpy())[0]
 
 
     if (iter+1)%n_iter_per_log==0:
@@ -237,6 +249,7 @@ for iter in range(n_iters):
 
 plt.figure(1)
 plt.clf()
+
 plt.subplot(2,1,1)
 plt.semilogy(loss_history,'.')
 v = plt.axis()
@@ -245,13 +258,20 @@ plt.title('loss baseline = %0.5f' % (np.mean(loss_baseline)))
 plt.grid()
 
 plt.subplot(2,1,2)
+plt.plot(spear,'.')
+v = plt.axis()
+plt.plot([v[0], v[1]], [0, 0])
+plt.title('Spearman (r)')
+plt.grid()
+
+
+plt.figure(2)
+plt.clf()
 no = output[0,:,0].data.cpu().numpy()
 bo = batch_out[0,:].data.cpu().numpy()
-r = spearmanr(no,bo)[0]
 plt.plot(bo,no,'o');
-plt.title('Spearman = %0.3f' % (r))
 plt.xlabel('Truth')
-plt.xlabel('Prediction')
+plt.ylabel('Prediction')
 plt.grid()
 
 sys.exit()
