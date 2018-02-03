@@ -39,24 +39,24 @@ from torch.nn.parameter import Parameter
 from torch import optim
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from scipy.stats.mstats import spearmanr
 
 plt.ion()
 
 ## Set model parameters
-#layer_sizes = [6, 4, 1]
-layer_sizes = [1, 4, 1]
+layer_sizes = [20, 20, 1]
 dropout = 0.0
 batch_size = 1
-n_iters = 1
+n_iters = 2000
 n_days_input = 10
 n_iter_per_log = 100
-learn_rate = 0.001
+learn_rate = 0.0003
 
 ################################################################
 # Initialize some things, and define functions and classes
 ################################################################
 
-seed = 1
+seed = 0
 np.random.seed(seed)
 torch.manual_seed(seed)
 if torch.cuda.is_available():
@@ -85,23 +85,23 @@ class fc_layers(nn.Module):
 
     def forward(self, input):
         output = self.fc1(input)
-        '''
         output = F.relu(output)
         output = self.do1(output)
 
         output = self.fc2(output)
 
+        '''
         output_summ = self.LinearSumm1(output/output.size()[2])   # divided by number of stocks
         output_summ = torch.sum(output_summ, 1, keepdim=True)   # sum over all stocks
         output_summ = F.relu(output_summ)
         output_summ = output_summ + self.LinearSumm2(output_summ)
         output = output + output_summ
+        '''
 
         output = F.relu(output)
         #output = self.do2(output)
 
         output = self.fc3(output)
-        '''
         return output
 
 
@@ -157,6 +157,7 @@ optimizer = optim.Adam(net.parameters(), lr=learn_rate)
 loss_history = np.zeros(n_iters)
 # loss_train_history = np.asarray([])
 # loss_test_history = np.asarray([])
+loss_baseline = np.zeros(n_iters)
 
 criterion = nn.MSELoss()
 
@@ -178,13 +179,13 @@ for iter in range(n_iters):
     batch_out = np.reshape(batch_out, (batch_size, n_symbols))
 
     # If any price for a symbol is nan, remove that symbol
-    iKeep = np.where(np.logical_not(np.isnan(batch_in)))
-    batch_in = batch_in[:,np.unique(iKeep[1]),:]
-    batch_out = batch_out[:,np.unique(iKeep[1])]
+    bKeep = np.logical_not(np.any(np.isnan(batch_in), axis=2))[0]
+    batch_in = batch_in[:,bKeep,:]
+    batch_out = batch_out[:,bKeep]
 
-    iKeep = np.where(np.logical_not(np.isnan(batch_out)))
-    batch_in = batch_in[:,np.unique(iKeep[1]),:]
-    batch_out = batch_out[:,np.unique(iKeep[1])]
+    bKeep = np.logical_not(np.any(np.isnan(batch_out), axis=0))
+    batch_in = batch_in[:,bKeep,:]
+    batch_out = batch_out[:,bKeep]
 
     # Convert to Variable and move to GPU if GPU available
     if b_use_cuda:
@@ -203,23 +204,14 @@ for iter in range(n_iters):
 
     # Compute gradients and update parameters
     loss.backward()
-    
-    # Get weights
-    weights = []
-    grads = []
-    for param in net.parameters():
-        grads.append(param.grad)
-        weights.append(param.data)
-    plt.figure(1)
-    plt.imshow(np.isnan(np.squeeze(batch_in.data.cpu().numpy())), aspect='auto', interpolation='nearest')
-    sys.exit()
-
     optimizer.step()
 
     loss_history[iter] = loss.data.cpu().numpy()
+    loss_baseline[iter] = criterion(torch.zeros(batch_out.size()), batch_out).data.cpu().numpy()
+
 
     if (iter+1)%n_iter_per_log==0:
-        print('Iteration %d, Loss=%0.3f, Duration=%0.3f' % (iter+1, loss.data.cpu().numpy(), time.time()-t_start))
+        print('Iteration %d, Loss=%0.5f, Duration=%0.3f' % (iter+1, loss.data.cpu().numpy(), time.time()-t_start))
 
 
         # ## Put full continuous training and testing data through model
@@ -237,15 +229,24 @@ for iter in range(n_iters):
         #              labels_test.transpose(1,0).contiguous().view(1*data_test.size()[0])) # cross-entropy
         # loss_test_history = np.append(loss_test_history,loss.data.cpu().numpy())
 
+
 plt.figure(1)
-plt.cla()
-plt.semilogy(loss_history)
+plt.clf()
+plt.subplot(2,1,1)
+plt.semilogy(loss_history,'.')
+v = plt.axis()
+plt.semilogy([v[0], v[1]], np.mean(loss_baseline)*np.ones(2))
+plt.title('loss baseline = %0.5f' % (np.mean(loss_baseline)))
 plt.grid()
 
-plt.figure(2)
+plt.subplot(2,1,2)
 no = output[0,:,0].data.cpu().numpy()
 bo = batch_out[0,:].data.cpu().numpy()
+r = spearmanr(no,bo)[0]
 plt.plot(bo,no,'o');
+plt.title('Spearman = %0.3f' % (r))
+plt.xlabel('Truth')
+plt.xlabel('Prediction')
 plt.grid()
 
 sys.exit()
