@@ -50,7 +50,7 @@ batch_size = 1
 n_iters = 2000
 n_days_input = 5
 n_iter_per_log = 100
-learn_rate = 0.001
+learn_rate = 0.0001
 
 ################################################################
 # Initialize some things, and define functions and classes
@@ -100,10 +100,9 @@ class fc_layers(nn.Module):
         output = self.fc2(output)
 
         #'''
-        # output_summ = self.LinearSumm1(output/output.size()[2])   # divided by number of stocks
-        # output_summ = torch.sum(output_summ, 1, keepdim=True)   # sum over all stocks
-        output_summ = self.LinearSumm1(output)   # divided by number of stocks
-        output_summ = torch.mean(output_summ, 1, keepdim=True)   # sum over all stocks
+        # Not clear if this helps or not
+        output_summ = self.LinearSumm1(output)
+        output_summ = torch.mean(output_summ, 1, keepdim=True)   # mean over all stocks
         output_summ = F.relu(output_summ)
         output_summ = self.LinearSumm2(output_summ)
         output = output + output_summ
@@ -213,9 +212,13 @@ for iter in range(n_iters):
 
     # Put data through model and compute loss
     output = net(batch_in)
-    loss = criterion(output, batch_out)
-    #loss = criterion(torch.mul(output[:,:,0],mask), torch.mul(batch_out,mask))
-    #loss = - torch.mul(torch.sum(torch.mul(torch.mul(output, batch_out-1.0), mask)), 1./np.sum(bUse))    # amount of money made (negative) per trade
+    
+    #loss = criterion(output, batch_out)
+    
+    # Use negative profit as the loss. Not sure the right way to normalize this to "unity neutral" investment.
+    output = output / torch.norm(output, p=2, dim=1)
+    output = output - torch.mean(output)
+    loss = -torch.sum(torch.exp(batch_out) * output[:,:,0] - output)    # profit = SUM[gi*xi - xi], gi=linear gain, xi=investment (negative if short)
     # TODO: Add heavy L1 cost to promote small number of trades?
 
     # Compute gradients and update parameters
@@ -250,11 +253,17 @@ for iter in range(n_iters):
 plt.figure(1)
 plt.clf()
 
+# plt.subplot(2,1,1)
+# plt.semilogy(loss_history,'.')
+# v = plt.axis()
+# plt.semilogy([v[0], v[1]], np.mean(loss_baseline)*np.ones(2))
+# plt.title('loss baseline = %0.5f' % (np.mean(loss_baseline)))
+# plt.grid()
+
 plt.subplot(2,1,1)
-plt.semilogy(loss_history,'.')
+plt.plot(loss_history,'.')
 v = plt.axis()
-plt.semilogy([v[0], v[1]], np.mean(loss_baseline)*np.ones(2))
-plt.title('loss baseline = %0.5f' % (np.mean(loss_baseline)))
+plt.plot([v[0], v[1]], np.zeros(2))
 plt.grid()
 
 plt.subplot(2,1,2)
