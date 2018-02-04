@@ -51,6 +51,7 @@ n_iters = 2000
 n_days_input = 5
 n_iter_per_log = 100
 learn_rate = 0.0001
+n_days_test = 100  # number of days at end of data set to reserve for testing
 
 ################################################################
 # Initialize some things, and define functions and classes
@@ -176,7 +177,7 @@ loss_history = np.zeros(n_iters)
 loss_baseline = np.zeros(n_iters)
 spear = np.zeros(n_iters)
 # loss_train_history = np.asarray([])
-# loss_test_history = np.asarray([])
+loss_test_history = np.asarray([])
 
 criterion = nn.MSELoss()
 
@@ -188,7 +189,7 @@ for iter in range(n_iters):
     optimizer.zero_grad()
 
     # Build the batch
-    ix_date_start = np.random.randint(0, n_dates-n_days_input, batch_size)
+    ix_date_start = np.random.randint(0, n_dates - n_days_input - n_days_test, batch_size)
     batch_in = np.zeros((batch_size, n_symbols, n_days_input, 4))
     batch_out = np.zeros((batch_size, n_symbols))
     for iBatch in range(batch_size):
@@ -233,21 +234,45 @@ for iter in range(n_iters):
     if (iter+1)%n_iter_per_log==0:
         print('Iteration %d, Loss=%0.5f, Duration=%0.3f' % (iter+1, loss.data.cpu().numpy(), time.time()-t_start))
 
+        ## Put testing data through model
+        net.eval()
 
-        # ## Put full continuous training and testing data through model
-        # net.eval()
+        loss_day = np.asarray([])
+        for i_test_samp in range(n_days_test-n_days_input-1):
 
-        # encoder_hidden = net.initHidden(1)
-        # encoder_output, _ = net(data_train.unsqueeze(2).transpose(2,1), encoder_hidden)
-        # loss = criterion(encoder_output[:,:,0:n_labels].contiguous().view(1*data_train.size()[0],-1), \
-        #              labels_train.transpose(1,0).contiguous().view(1*data_train.size()[0])) # cross-entropy
-        # loss_train_history = np.append(loss_train_history,loss.data.cpu().numpy())
+            # Build the batch
+            ix_date_start = np.asarray([n_dates - n_days_test + i_test_samp])
+            batch_in = np.zeros((1, n_symbols, n_days_input, 4))
+            batch_out = np.zeros((1, n_symbols))
+            for iBatch in range(1):
+                batch_in[iBatch] = prices[:, ix_date_start[iBatch]:ix_date_start[iBatch]+n_days_input, :]
+                batch_out[iBatch] = prices[:, ix_date_start[iBatch]+n_days_input, -1]   # closing price of next day after range of input days
+            batch_in = np.reshape(batch_in, (1, n_symbols, n_days_input*4))
+            batch_out = np.reshape(batch_out, (1, n_symbols))
 
-        # encoder_hidden = net.initHidden(1)
-        # encoder_output, _ = net(data_test.unsqueeze(2).transpose(2,1), encoder_hidden)
-        # loss = criterion(encoder_output[:,:,0:n_labels].contiguous().view(1*data_test.size()[0],-1), \
-        #              labels_test.transpose(1,0).contiguous().view(1*data_test.size()[0])) # cross-entropy
-        # loss_test_history = np.append(loss_test_history,loss.data.cpu().numpy())
+            # If any price for a symbol is nan, remove that symbol
+            bKeep = np.logical_not(np.any(np.isnan(batch_in), axis=2))[0]
+            batch_in = batch_in[:,bKeep,:]
+            batch_out = batch_out[:,bKeep]
+
+            bKeep = np.logical_not(np.any(np.isnan(batch_out), axis=0))
+            batch_in = batch_in[:,bKeep,:]
+            batch_out = batch_out[:,bKeep]
+
+            # Convert to Variable and move to GPU if GPU available
+            batch_in = V(TT(batch_in.astype(np.float32)))
+            batch_out = V(TT(batch_out.astype(np.float32)))
+
+            # Put data through model and compute loss
+            output = net(batch_in)
+            loss = criterion(output, batch_out)
+
+            # Use negative profit as the loss. Not sure the right way to normalize this to "unity neutral" investment.
+            output = output / torch.norm(output, p=2, dim=1)
+            output = output - torch.mean(output)
+            loss_day = np.append(loss_day,(-torch.sum(torch.exp(batch_out) * output[:,:,0] - output)).data.cpu().numpy())    # profit = SUM[gi*xi - xi], gi=linear gain, xi=investment (negative if short)
+        
+        loss_test_history = np.append(loss_test_history,np.mean(loss_day))
 
 
 plt.figure(1)
@@ -261,17 +286,25 @@ plt.clf()
 # plt.grid()
 
 plt.subplot(2,1,1)
-plt.plot(loss_history,'.')
+plt.plot(loss_history ,'.')
 v = plt.axis()
 plt.plot([v[0], v[1]], np.zeros(2))
+plt.title('Training sample loss')
 plt.grid()
 
 plt.subplot(2,1,2)
-plt.plot(spear,'.')
+plt.plot(loss_test_history, '-o')
 v = plt.axis()
 plt.plot([v[0], v[1]], [0, 0])
-plt.title('Spearman (r)')
+plt.title('Test set mean loss')
 plt.grid()
+
+# plt.subplot(2,1,2)
+# plt.plot(spear,'.')
+# v = plt.axis()
+# plt.plot([v[0], v[1]], [0, 0])
+# plt.title('Spearman (r)')
+# plt.grid()
 
 
 plt.figure(2)
