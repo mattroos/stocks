@@ -31,14 +31,6 @@
 # TODO: For more regularization, drop some fraction of the stocks in each batch/iteration.
 
 
-# #######################################################################
-#
-# TODO!!:  Clean data, but how?  E.g., stock 461==CADC has bad data
-# for dates of Jun-14-2013 and Jun-17-2013 (dates 1623 and 1624)
-#
-# #######################################################################
-
-
 import numpy as np 
 import hickle
 import sys
@@ -162,13 +154,14 @@ bKeep =  (mn > 1.0) & (mx < 1000.0)
 prices = prices[bKeep,:,:]
 volume = volume[bKeep,:]
 symbols = symbols[bKeep]
-#sys.exit()
 
-# ## Set some bad data to nan
-# Bad stocks on 6/18/13: ANTH, CERN, CRVL, CSWL, CYTK, INBK, PRAA
-# Bad stocks on 6/18/13: 157, 426, 561, 584, 626, 1236, 1893
-prices[[157, 426, 561, 584, 626, 1236, 1893],:,:] = np.nan
-# prices[:,1625,:] = np.nan   # looks like lots of bad data on 6/18/13 == 1625
+## Set some bad data to nan
+# Bad stocks on 6/17/13: ANTH, CERN, CRVL, CSWL, CYTK, INBK, PRAA
+badstocks = ['ANTH', 'CERN', 'CRVL', 'CSWL', 'CYTK', 'INBK', 'PRAA']
+ixDate = np.where(dates=='17-Jun-2013')[0]
+for stock in badstocks:
+    ixStock = np.where(symbols==stock)[0]
+    prices[ixStock,ixDate,:] = np.nan
 
 # Some stocks didn't trade on an open market day (volume=0). Replace
 # prices with nan, for those days, so they are not used for model training
