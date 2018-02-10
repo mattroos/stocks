@@ -60,7 +60,7 @@ plt.ion()
 layer_sizes = [10, 10, 1]
 dropout = 0.1
 batch_size = 1
-n_iters = 10000
+n_iters = 20000
 n_days_input = 5
 n_i_iter_per_log = 100
 learn_rate = 0.0001
@@ -113,14 +113,14 @@ class fc_layers(nn.Module):
 
         output = self.fc2(output)
 
-        #'''
+        '''
         # Not clear if this helps or not
         output_summ = self.LinearSumm1(output)
         output_summ = torch.mean(output_summ, 1, keepdim=True)   # mean over all stocks
         output_summ = F.relu(output_summ)
         output_summ = self.LinearSumm2(output_summ)
         output = output + output_summ
-        #'''
+        '''
 
         output = F.relu(output)
         #output = self.do2(output)
@@ -138,7 +138,6 @@ volume = data_dict['volume']
 prices = data_dict['prices']
 del data_dict
 
-
 # Remove days in which the market was closed (determined as days
 # for which all stocks had volume=0 or volume=nan)
 ixClosed = np.where(np.all((volume==0) | np.isnan(volume), axis=0))[0]
@@ -155,10 +154,21 @@ dayofweek = np.delete(dayofweek, ixClosed)
 # volume = volume[ixKeep,:]
 # symbols = symbols[ixKeep]
 
+# Remove stocks with very low or very high stock price, which may indicate
+# the data is bad (at any time?  average/median over time)?
+mx = np.nanmax(np.nanmax(prices[:,:,:], axis=2), axis=1)
+mn = np.nanmin(np.nanmin(prices[:,:,:], axis=2), axis=1)
+bKeep =  (mn > 1.0) & (mx < 1000.0)
+prices = prices[bKeep,:,:]
+volume = volume[bKeep,:]
+symbols = symbols[bKeep]
+#sys.exit()
 
-# Remove stocks with very low average/median stock price (over time)?
-
-
+# ## Set some bad data to nan
+# Bad stocks on 6/18/13: ANTH, CERN, CRVL, CSWL, CYTK, INBK, PRAA
+# Bad stocks on 6/18/13: 157, 426, 561, 584, 626, 1236, 1893
+prices[[157, 426, 561, 584, 626, 1236, 1893],:,:] = np.nan
+# prices[:,1625,:] = np.nan   # looks like lots of bad data on 6/18/13 == 1625
 
 # Some stocks didn't trade on an open market day (volume=0). Replace
 # prices with nan, for those days, so they are not used for model training
@@ -231,7 +241,7 @@ for i_iter in range(n_iters):
     batch_in = np.reshape(batch_in, (batch_size, n_symbols, n_days_input*4))
     batch_out = np.reshape(batch_out, (batch_size, n_symbols))
 
-    # if i_iter==4367:    # very low loss on this sample. why?
+    # if i_iter==3751:    # very low loss on this sample. why?
     #     sys.exit()
 
     # If any price for a symbol is nan, remove that symbol
